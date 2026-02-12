@@ -104,8 +104,8 @@ ui <- navbarPage(
                     hr(), 
                     
                     h3("Notes"), 
-                    p("(1) The exported pdfs have better quality than the images shown in this application."),
-                    p("(2) The icon arrays in the app might take several moments to load. If you can see the loading bars, then it will populate soon."),
+                    p("(1) The exported PDFs are high-resolution vector graphics and have better quality than the preview images shown in this application."),
+                    p("(2) The icon arrays may take several moments to generate. If you see the loading spinner or progress bar, the application is working and will display your plot shortly."),
                     
                     hr(), 
                     
