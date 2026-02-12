@@ -5,6 +5,7 @@ library(dplyr)
 library(png)
 library(grid)
 library(patchwork)
+library(shinycssloaders)
 
 ui <- navbarPage(
   title = "CANViewRisk",
