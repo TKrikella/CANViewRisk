@@ -67,14 +67,14 @@ ui <- navbarPage(
                              wellPanel(
                                tags$b("The Baseline Risk"),
                                p("In the placebo group, the risk was ~8% (8 out of 100)."),
-                               plotOutput("case_study_plot1", height = "300px")
+                               withSpinner(plotOutput("single_plot", height = "600px"), type = 6, color = "#2c3e50")
                              )
                       ),
                       column(6, 
                              wellPanel(
                                tags$b("The Reduced Risk"),
                                p("With the drug, the risk dropped to ~5% (5 out of 100)."),
-                               plotOutput("case_study_plot2", height = "300px")
+                               withSpinner(plotOutput("single_plot", height = "600px"), type = 6, color = "#2c3e50")
                              )
                       )
                     ),
@@ -126,7 +126,7 @@ ui <- navbarPage(
              ),
              mainPanel(
                div(class = "plot-title-display", textOutput("title_out1")),
-               plotOutput("single_plot", height = "600px")
+               withSpinner(plotOutput("single_plot", height = "600px"), type = 6, color = "#2c3e50")
              )
            )
   ),
@@ -152,7 +152,7 @@ ui <- navbarPage(
              ),
              mainPanel(
                div(class = "plot-title-display", textOutput("title_out2")),
-               plotOutput("comp_plot", height = "600px"),
+               withSpinner(plotOutput("single_plot", height = "600px"), type = 6, color = "#2c3e50"),
                wellPanel(
                  h4("Calculation Summary"),
                  htmlOutput("comp_text")
@@ -183,7 +183,7 @@ ui <- navbarPage(
              ),
              mainPanel(
                div(class = "plot-title-display", textOutput("title_out3")),
-               plotOutput("dual_plot", height = "600px")
+               withSpinner(plotOutput("single_plot", height = "600px"), type = 6, color = "#2c3e50")
              )
            )
   )
