@@ -5,6 +5,7 @@ library(dplyr)
 library(png)
 library(grid)
 library(patchwork)
+library(shinycssloaders)
 
 ui <- navbarPage(
   title = "CANViewRisk",
@@ -67,14 +68,14 @@ ui <- navbarPage(
                              wellPanel(
                                tags$b("The Baseline Risk"),
                                p("In the placebo group, the risk was ~8% (8 out of 100)."),
-                               plotOutput("case_study_plot1", height = "300px")
+                               withSpinner(plotOutput("case_study_plot1", height = "300px"), color = "#2c3e50")
                              )
                       ),
                       column(6, 
                              wellPanel(
                                tags$b("The Reduced Risk"),
                                p("With the drug, the risk dropped to ~5% (5 out of 100)."),
-                               plotOutput("case_study_plot2", height = "300px")
+                               withSpinner(plotOutput("case_study_plot2", height = "300px"), color = "#2c3e50")
                              )
                       )
                     ),
@@ -126,7 +127,7 @@ ui <- navbarPage(
              ),
              mainPanel(
                div(class = "plot-title-display", textOutput("title_out1")),
-               plotOutput("single_plot", height = "600px")
+               withSpinner(plotOutput("single_plot", height = "600px"), color = "#2c3e50")
              )
            )
   ),
@@ -152,7 +153,7 @@ ui <- navbarPage(
              ),
              mainPanel(
                div(class = "plot-title-display", textOutput("title_out2")),
-               plotOutput("comp_plot", height = "600px"),
+               withSpinner(plotOutput("comp_plot", height = "600px"), color = "#2c3e50"),
                wellPanel(
                  h4("Calculation Summary"),
                  htmlOutput("comp_text")
@@ -183,7 +184,7 @@ ui <- navbarPage(
              ),
              mainPanel(
                div(class = "plot-title-display", textOutput("title_out3")),
-               plotOutput("dual_plot", height = "600px")
+               withSpinner(plotOutput("dual_plot", height = "600px"), color = "#2c3e50")
              )
            )
   )
@@ -229,6 +230,9 @@ server <- function(input, output, session) {
       theme_void() +
       labs(subtitle = paste0(label_prefix, ": ", pct, "% (", round(count, 1), " out of ", n, ")")) +
       theme(
+        plot.background = element_rect(fill = "white", color = NA),
+        panel.background = element_rect(fill = "white", color = NA),
+        
         plot.subtitle = element_text(hjust = 0.5, size = 16, color = "#7f8c8d", margin = margin(t = 10, b = 20)),
         plot.margin = margin(10, 10, 10, 10)
       )
@@ -295,39 +299,74 @@ server <- function(input, output, session) {
   
   # Downloads
   output$downloadAbs <- downloadHandler(
-    filename = function() { "absolute_risk.png" },
+    filename = function() { "absolute_risk.pdf" },
     content = function(file) {
-      cnt <- (input$direct_abs / 100) * input$total_n1
-      p <- make_icon_plot(input$total_n1, cnt, "Absolute Risk", input$direct_abs)
-      p <- p + labs(title = input$user_title1) + theme(plot.title = element_text(hjust=0.5, size=20))
-      ggsave(file, plot = p, width = 8, height = 7)
+      # This adds the progress notification at the top of the screen
+      withProgress(message = 'Generating PDF', detail = 'This may take a moment...', value = 0, {
+        
+        incProgress(0.3, detail = "Calculating plot...") # Move bar to 30%
+        cnt <- (input$direct_abs / 100) * input$total_n1
+        p <- make_icon_plot(input$total_n1, cnt, "Absolute Risk", input$direct_abs)
+        p <- p + labs(title = input$user_title1) + 
+          theme(plot.title = element_text(hjust=0.5, size=20))
+        
+        incProgress(0.6, detail = "Rendering icons...") # Move bar to 90%
+        ggsave(file, plot = p, width = 8, height = 7, bg = "white")
+        
+        incProgress(0.1, detail = "Finished!") # Finish
+      })
     }
   )
   
+  # Download for Tab 3: Single Relative Risk
   output$downloadRel <- downloadHandler(
-    filename = function() { "relative_risk.png" },
+    filename = function() { "relative_risk.pdf" },
     content = function(file) {
-      b_cnt <- (input$baseline / 100) * input$total_n2
-      n_risk <- input$baseline * (1 + (input$pct_inc / 100))
-      n_cnt <- (n_risk / 100) * input$total_n2
-      p1 <- make_icon_plot(input$total_n2, b_cnt, "Baseline", input$baseline)
-      p2 <- make_icon_plot(input$total_n2, n_cnt, "Increased Risk", n_risk)
-      combined <- p1 + p2 + plot_annotation(title = input$user_title2, theme = theme(plot.title = element_text(hjust=0.5, size=20)))
-      ggsave(file, plot = combined, width = 14, height = 7)
+      withProgress(message = 'Preparing Comparison PDF', detail = 'Rendering arrays...', value = 0, {
+        
+        incProgress(0.2)
+        mult <- if(input$rel_direction == "inc") 1 + (input$pct_change / 100) else 1 - (input$pct_change / 100)
+        b_cnt <- (input$baseline / 100) * input$total_n2
+        n_risk <- max(0, input$baseline * mult)
+        n_cnt <- (n_risk / 100) * input$total_n2
+        
+        incProgress(0.4, detail = "Creating visualizations...")
+        p1 <- make_icon_plot(input$total_n2, b_cnt, "Baseline", input$baseline)
+        p2 <- make_icon_plot(input$total_n2, n_cnt, "New Risk", round(n_risk, 2))
+        
+        combined <- p1 + p2 + 
+          plot_annotation(title = input$user_title2, 
+                          theme = theme(plot.title = element_text(hjust=0.5, size=20)))
+        
+        incProgress(0.3, detail = "Saving file...")
+        ggsave(file, plot = combined, width = 14, height = 7, bg = "white")
+      })
     }
   )
   
+  # Download for Tab 4: Compare Two Absolute Risks
   output$downloadDual <- downloadHandler(
-    filename = function() { "dual_comparison.png" },
+    filename = function() { "dual_comparison.pdf" },
     content = function(file) {
-      cnt1 <- (input$risk1 / 100) * input$total_n3
-      cnt2 <- (input$risk2 / 100) * input$total_n3
-      p1 <- make_icon_plot(input$total_n3, cnt1, input$label_a, input$risk1)
-      p2 <- make_icon_plot(input$total_n3, cnt2, input$label_b, input$risk2)
-      combined <- p1 + p2 + plot_annotation(title = input$user_title3, theme = theme(plot.title = element_text(hjust=0.5, size=20)))
-      ggsave(file, plot = combined, width = 14, height = 7)
+      withProgress(message = 'Preparing Comparison PDF', detail = 'Rendering arrays...', value = 0, {
+        
+        incProgress(0.3)
+        cnt1 <- (input$risk1 / 100) * input$total_n3
+        cnt2 <- (input$risk2 / 100) * input$total_n3
+        
+        incProgress(0.3, detail = "Building side-by-side plot...")
+        p1 <- make_icon_plot(input$total_n3, cnt1, input$label_a, input$risk1)
+        p2 <- make_icon_plot(input$total_n3, cnt2, input$label_b, input$risk2)
+        
+        combined <- p1 + p2 + 
+          plot_annotation(title = input$user_title3, 
+                          theme = theme(plot.title = element_text(hjust=0.5, size=20)))
+        
+        incProgress(0.3, detail = "Saving file...")
+        ggsave(file, plot = combined, width = 14, height = 7, bg = "white")
+      })
     }
   )
-}
 
+}
 shinyApp(ui, server)
