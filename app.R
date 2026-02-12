@@ -103,6 +103,12 @@ ui <- navbarPage(
                     
                     hr(), 
                     
+                    h3("Notes"), 
+                    p("(1) The exported pdfs have better quality than the images shown in this application."),
+                    p("(2) The icon arrays in the app might take several moments to load. If you can see the loading bars, then it will populate soon."),
+                    
+                    hr(), 
+                    
                     h3("Contact Us"), 
                     p("To report any issues with the web application, please contact krikella@yorku.ca.")
              ), 
