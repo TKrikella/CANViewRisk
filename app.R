@@ -13,11 +13,12 @@ ui <- navbarPage(
   theme = shinytheme("flatly"),
   
   header = tags$head(
+    # Load Font Awesome for the GitHub icon
+    tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"),
     tags$style(HTML("
       .navbar-brand { cursor: default; pointer-events: none; }
       .sidebar { background-color: #f8f9fa; }
       body { font-size: 15px; }
-      /* Prevent CSS from forcing capitalization or small-caps */
       * { text-transform: none !important; font-variant: normal !important; }
       .plot-title-display { 
         text-align: center; 
@@ -27,6 +28,34 @@ ui <- navbarPage(
         margin-bottom: 0px; 
         color: #2c3e50;
       }
+      /* Styling the injected GitHub link */
+      .github-nav-link {
+        float: right !important;
+        margin-top: 12px;
+        margin-right: 15px;
+      }
+      .github-nav-link a {
+        color: #ecf0f1 !important; /* Matches Flatly navbar text */
+        text-decoration: none;
+        font-weight: bold;
+        background: #34495e;
+        padding: 6px 12px;
+        border-radius: 4px;
+      }
+      .github-nav-link a:hover {
+        background: #1a252f;
+      }
+    ")),
+    tags$script(HTML("
+      $(document).ready(function() {
+        $('.navbar .container-fluid').append(`
+          <div class='github-nav-link'>
+            <a href='https://github.com/TKrikella/CANViewRisk' target='_blank'>
+              <i class='fa fa-github'></i> Open Source Code
+            </a>
+          </div>
+        `);
+      });
     "))
   ),
   
