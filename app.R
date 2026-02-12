@@ -5,7 +5,6 @@ library(dplyr)
 library(png)
 library(grid)
 library(patchwork)
-library(shinycssloaders)
 
 ui <- navbarPage(
   title = "CANViewRisk",
@@ -68,14 +67,14 @@ ui <- navbarPage(
                              wellPanel(
                                tags$b("The Baseline Risk"),
                                p("In the placebo group, the risk was ~8% (8 out of 100)."),
-                               withSpinner(plotOutput("single_plot", height = "600px"), type = 6, color = "#2c3e50")
+                               plotOutput("case_study_plot1", height = "300px")
                              )
                       ),
                       column(6, 
                              wellPanel(
                                tags$b("The Reduced Risk"),
                                p("With the drug, the risk dropped to ~5% (5 out of 100)."),
-                               withSpinner(plotOutput("single_plot", height = "600px"), type = 6, color = "#2c3e50")
+                               plotOutput("case_study_plot2", height = "300px")
                              )
                       )
                     ),
@@ -127,7 +126,7 @@ ui <- navbarPage(
              ),
              mainPanel(
                div(class = "plot-title-display", textOutput("title_out1")),
-               withSpinner(plotOutput("single_plot", height = "600px"), type = 6, color = "#2c3e50")
+               plotOutput("single_plot", height = "600px")
              )
            )
   ),
@@ -153,7 +152,7 @@ ui <- navbarPage(
              ),
              mainPanel(
                div(class = "plot-title-display", textOutput("title_out2")),
-               withSpinner(plotOutput("single_plot", height = "600px"), type = 6, color = "#2c3e50"),
+               plotOutput("comp_plot", height = "600px"),
                wellPanel(
                  h4("Calculation Summary"),
                  htmlOutput("comp_text")
@@ -184,7 +183,7 @@ ui <- navbarPage(
              ),
              mainPanel(
                div(class = "plot-title-display", textOutput("title_out3")),
-               withSpinner(plotOutput("single_plot", height = "600px"), type = 6, color = "#2c3e50")
+               plotOutput("dual_plot", height = "600px")
              )
            )
   )
@@ -192,21 +191,30 @@ ui <- navbarPage(
 
 server <- function(input, output, session) {
   
-  # --- OPTIMIZATION: Load images ONCE at startup ---
-  img_col <- readPNG("www/coloured.png")
-  img_out <- readPNG("www/outline.png")
-  
   # Titles
   output$title_out1 <- renderText({ input$user_title1 })
   output$title_out2 <- renderText({ input$user_title2 })
   output$title_out3 <- renderText({ input$user_title3 })
   
-  # Case Study Plots
-  output$case_study_plot1 <- renderPlot({ make_icon_plot(100, 8, "Placebo", 8) })
-  output$case_study_plot2 <- renderPlot({ make_icon_plot(100, 5, "Statin", 5) })
+  # Case Study Plots for the Introduction Tab
+  # We use manually rounded values (8 and 5) for the clearest possible example
+  output$case_study_plot1 <- renderPlot({
+    make_icon_plot(100, 8, "Placebo (Baseline)", 8)
+  })
   
-  # --- OPTIMIZED PLOTTING FUNCTION ---
-  make_icon_plot <- function(n, count, label_prefix, pct, ncol = 10) {
+  output$case_study_plot2 <- renderPlot({
+    make_icon_plot(100, 5, "Statin (Treatment)", 5)
+  })
+  
+  # Icon plotting function
+  make_icon_plot <- function(n, count, label_prefix, pct, 
+                             img_coloured = "www/coloured.png",
+                             img_outline  = "www/outline.png",
+                             ncol = 10) {
+    
+    img_col <- readPNG(img_coloured)
+    img_out <- readPNG(img_outline)
+    
     nrow <- ceiling(n / ncol)
     grid_data <- expand.grid(x = 1:ncol, y = nrow:1) %>%
       slice(1:n) %>%
@@ -221,17 +229,11 @@ server <- function(input, output, session) {
       theme_void() +
       labs(subtitle = paste0(label_prefix, ": ", pct, "% (", round(count, 1), " out of ", n, ")")) +
       theme(
-        # FIX: Explicitly set backgrounds to white for PDF export
-        plot.background = element_rect(fill = "white", color = NA),
-        panel.background = element_rect(fill = "white", color = NA),
         plot.subtitle = element_text(hjust = 0.5, size = 16, color = "#7f8c8d", margin = margin(t = 10, b = 20)),
         plot.margin = margin(10, 10, 10, 10)
       )
     
     padding <- 0.48
-    
-    # Still using annotation_custom, but it's faster now because 
-    # img_col/img_out are already in memory (Global env)
     icons <- mapply(function(x, y, is_risk) {
       img <- if(is_risk) img_col else img_out
       annotation_custom(rasterGrob(img, interpolate = TRUE),
@@ -242,16 +244,26 @@ server <- function(input, output, session) {
     p + icons
   }
   
-  # Render plots (these will now be much faster)
+  # Render plots
   output$single_plot <- renderPlot({
     cnt <- (input$direct_abs / 100) * input$total_n1
     make_icon_plot(input$total_n1, cnt, "Absolute Risk", input$direct_abs)
   })
   
   output$comp_plot <- renderPlot({
-    mult <- if(input$rel_direction == "inc") 1 + (input$pct_change / 100) else 1 - (input$pct_change / 100)
+    # Determine the multiplier based on direction
+    mult <- if(input$rel_direction == "inc") {
+      1 + (input$pct_change / 100)
+    } else {
+      1 - (input$pct_change / 100)
+    }
+    
     b_cnt <- (input$baseline / 100) * input$total_n2
-    n_risk <- max(0, input$baseline * mult)
+    n_risk <- input$baseline * mult
+    
+    # Ensure risk doesn't go below 0
+    n_risk <- max(0, n_risk)
+    
     n_cnt <- (n_risk / 100) * input$total_n2
     
     p1 <- make_icon_plot(input$total_n2, b_cnt, "Baseline", input$baseline)
@@ -259,23 +271,63 @@ server <- function(input, output, session) {
     p1 + p2
   })
   
-  # ... [Keep your comp_text and dual_plot logic here] ...
+  output$comp_text <- renderUI({
+    mult <- if(input$rel_direction == "inc") {
+      1 + (input$pct_change / 100)
+    } else {
+      1 - (input$pct_change / 100)
+    }
+    
+    n_risk <- max(0, input$baseline * mult)
+    direction_text <- if(input$rel_direction == "inc") "relative increase" else "relative decrease"
+    
+    HTML(paste0("A baseline risk of <b>", input$baseline, "%</b> with a <b>", input$pct_change, 
+                "% ", direction_text, "</b> results in a new absolute risk of <b>", round(n_risk, 2), "%</b>."))
+  })
   
-  # --- UPDATED DOWNLOAD HANDLERS ---
+  output$dual_plot <- renderPlot({
+    cnt1 <- (input$risk1 / 100) * input$total_n3
+    cnt2 <- (input$risk2 / 100) * input$total_n3
+    p1 <- make_icon_plot(input$total_n3, cnt1, input$label_a, input$risk1)
+    p2 <- make_icon_plot(input$total_n3, cnt2, input$label_b, input$risk2)
+    p1 + p2
+  })
+  
+  # Downloads
   output$downloadAbs <- downloadHandler(
-    filename = function() { "absolute_risk.pdf" }, # Changed to .pdf
+    filename = function() { "absolute_risk.png" },
     content = function(file) {
       cnt <- (input$direct_abs / 100) * input$total_n1
       p <- make_icon_plot(input$total_n1, cnt, "Absolute Risk", input$direct_abs)
-      p <- p + labs(title = input$user_title1) + 
-        theme(plot.title = element_text(hjust=0.5, size=20))
-      
-      # Use cairo_pdf for better transparency handling
-      ggsave(file, plot = p, width = 8, height = 7, device = cairo_pdf)
+      p <- p + labs(title = input$user_title1) + theme(plot.title = element_text(hjust=0.5, size=20))
+      ggsave(file, plot = p, width = 8, height = 7)
     }
   )
   
-  # Apply the same 'device = cairo_pdf' and 'white background' logic to other downloads
+  output$downloadRel <- downloadHandler(
+    filename = function() { "relative_risk.png" },
+    content = function(file) {
+      b_cnt <- (input$baseline / 100) * input$total_n2
+      n_risk <- input$baseline * (1 + (input$pct_inc / 100))
+      n_cnt <- (n_risk / 100) * input$total_n2
+      p1 <- make_icon_plot(input$total_n2, b_cnt, "Baseline", input$baseline)
+      p2 <- make_icon_plot(input$total_n2, n_cnt, "Increased Risk", n_risk)
+      combined <- p1 + p2 + plot_annotation(title = input$user_title2, theme = theme(plot.title = element_text(hjust=0.5, size=20)))
+      ggsave(file, plot = combined, width = 14, height = 7)
+    }
+  )
+  
+  output$downloadDual <- downloadHandler(
+    filename = function() { "dual_comparison.png" },
+    content = function(file) {
+      cnt1 <- (input$risk1 / 100) * input$total_n3
+      cnt2 <- (input$risk2 / 100) * input$total_n3
+      p1 <- make_icon_plot(input$total_n3, cnt1, input$label_a, input$risk1)
+      p2 <- make_icon_plot(input$total_n3, cnt2, input$label_b, input$risk2)
+      combined <- p1 + p2 + plot_annotation(title = input$user_title3, theme = theme(plot.title = element_text(hjust=0.5, size=20)))
+      ggsave(file, plot = combined, width = 14, height = 7)
+    }
+  )
 }
 
 shinyApp(ui, server)
