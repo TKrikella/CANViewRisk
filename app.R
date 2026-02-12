@@ -57,7 +57,7 @@ ui <- navbarPage(
                     
                     hr(),
                     
-                    h3("Case Study: The Power of Absolute Risk Visualization"),
+                    h3("Case Study: Absolute Risk vs. Relative Risk"),
                     p("Consider the landmark WOSCOPS study (Shepherd et al., 1995) which investigated the 
                       effect of statins on heart disease. The study reported a 31% relative risk reduction 
                       in heart attacks. However, rounding to the nearest whole number for clarity, we can 
@@ -198,30 +198,26 @@ ui <- navbarPage(
 
 server <- function(input, output, session) {
   
-  # Titles
-  output$title_out1 <- renderText({ input$user_title1 })
-  output$title_out2 <- renderText({ input$user_title2 })
-  output$title_out3 <- renderText({ input$user_title3 })
+  # --- LOAD ICONS ONCE ---
+  # These are stored as "grobs" in the server environment
+  img_col_grob <- rasterGrob(readPNG("www/coloured.png"), interpolate = TRUE)
+  img_out_grob <- rasterGrob(readPNG("www/outline.png"), interpolate = TRUE)
   
-  # Case Study Plots for the Introduction Tab
-  # We use manually rounded values (8 and 5) for the clearest possible example
-  output$case_study_plot1 <- renderPlot({
-    make_icon_plot(100, 8, "Placebo (Baseline)", 8)
-  })
+  # --- DEBOUNCE INPUTS ---
+  # Wait 500ms after the user stops typing/clicking before triggering a re-render
+  d_direct_abs   <- reactive({ input$direct_abs }) %>% debounce(500)
+  d_total_n1     <- reactive({ input$total_n1 }) %>% debounce(500)
   
-  output$case_study_plot2 <- renderPlot({
-    make_icon_plot(100, 5, "Statin (Treatment)", 5)
-  })
+  d_baseline     <- reactive({ input$baseline }) %>% debounce(500)
+  d_pct_change   <- reactive({ input$pct_change }) %>% debounce(500)
+  d_total_n2     <- reactive({ input$total_n2 }) %>% debounce(500)
   
-  # Icon plotting function
-  make_icon_plot <- function(n, count, label_prefix, pct, 
-                             img_coloured = "www/coloured.png",
-                             img_outline  = "www/outline.png",
-                             ncol = 10) {
-    
-    img_col <- readPNG(img_coloured)
-    img_out <- readPNG(img_outline)
-    
+  d_risk1        <- reactive({ input$risk1 }) %>% debounce(500)
+  d_risk2        <- reactive({ input$risk2 }) %>% debounce(500)
+  d_total_n3     <- reactive({ input$total_n3 }) %>% debounce(500)
+  
+  # --- ICON PLOTTING FUNCTION ---
+  make_icon_plot <- function(n, count, label_prefix, pct, ncol = 10) {
     nrow <- ceiling(n / ncol)
     grid_data <- expand.grid(x = 1:ncol, y = nrow:1) %>%
       slice(1:n) %>%
@@ -238,15 +234,14 @@ server <- function(input, output, session) {
       theme(
         plot.background = element_rect(fill = "white", color = NA),
         panel.background = element_rect(fill = "white", color = NA),
-        
         plot.subtitle = element_text(hjust = 0.5, size = 16, color = "#7f8c8d", margin = margin(t = 10, b = 20)),
         plot.margin = margin(10, 10, 10, 10)
       )
     
     padding <- 0.48
     icons <- mapply(function(x, y, is_risk) {
-      img <- if(is_risk) img_col else img_out
-      annotation_custom(rasterGrob(img, interpolate = TRUE),
+      target_grob <- if(is_risk) img_col_grob else img_out_grob
+      annotation_custom(target_grob,
                         xmin = x - padding, xmax = x + padding,
                         ymin = y - padding, ymax = y + padding)
     }, grid_data$x, grid_data$y, grid_data$is_risk, SIMPLIFY = FALSE)
@@ -254,125 +249,81 @@ server <- function(input, output, session) {
     p + icons
   }
   
-  # Render plots
+  # --- RENDER OUTPUTS ---
+  output$title_out1 <- renderText({ input$user_title1 })
+  output$title_out2 <- renderText({ input$user_title2 })
+  output$title_out3 <- renderText({ input$user_title3 })
+  
+  output$case_study_plot1 <- renderPlot({ make_icon_plot(100, 8, "Placebo (Baseline)", 8) })
+  output$case_study_plot2 <- renderPlot({ make_icon_plot(100, 5, "Statin (Treatment)", 5) })
+  
   output$single_plot <- renderPlot({
-    cnt <- (input$direct_abs / 100) * input$total_n1
-    make_icon_plot(input$total_n1, cnt, "Absolute Risk", input$direct_abs)
+    cnt <- (d_direct_abs() / 100) * d_total_n1()
+    make_icon_plot(d_total_n1(), cnt, "Absolute Risk", d_direct_abs())
   })
   
   output$comp_plot <- renderPlot({
-    # Determine the multiplier based on direction
-    mult <- if(input$rel_direction == "inc") {
-      1 + (input$pct_change / 100)
-    } else {
-      1 - (input$pct_change / 100)
-    }
+    mult <- if(input$rel_direction == "inc") 1 + (d_pct_change() / 100) else 1 - (d_pct_change() / 100)
+    b_cnt <- (d_baseline() / 100) * d_total_n2()
+    n_risk <- max(0, d_baseline() * mult)
+    n_cnt <- (n_risk / 100) * d_total_n2()
     
-    b_cnt <- (input$baseline / 100) * input$total_n2
-    n_risk <- input$baseline * mult
-    
-    # Ensure risk doesn't go below 0
-    n_risk <- max(0, n_risk)
-    
-    n_cnt <- (n_risk / 100) * input$total_n2
-    
-    p1 <- make_icon_plot(input$total_n2, b_cnt, "Baseline", input$baseline)
-    p2 <- make_icon_plot(input$total_n2, n_cnt, "New Risk", round(n_risk, 2))
+    p1 <- make_icon_plot(d_total_n2(), b_cnt, "Baseline", d_baseline())
+    p2 <- make_icon_plot(d_total_n2(), n_cnt, "New Risk", round(n_risk, 2))
     p1 + p2
   })
   
   output$comp_text <- renderUI({
-    mult <- if(input$rel_direction == "inc") {
-      1 + (input$pct_change / 100)
-    } else {
-      1 - (input$pct_change / 100)
-    }
-    
+    mult <- if(input$rel_direction == "inc") 1 + (input$pct_change / 100) else 1 - (input$pct_change / 100)
     n_risk <- max(0, input$baseline * mult)
     direction_text <- if(input$rel_direction == "inc") "relative increase" else "relative decrease"
-    
     HTML(paste0("A baseline risk of <b>", input$baseline, "%</b> with a <b>", input$pct_change, 
                 "% ", direction_text, "</b> results in a new absolute risk of <b>", round(n_risk, 2), "%</b>."))
   })
   
   output$dual_plot <- renderPlot({
-    cnt1 <- (input$risk1 / 100) * input$total_n3
-    cnt2 <- (input$risk2 / 100) * input$total_n3
-    p1 <- make_icon_plot(input$total_n3, cnt1, input$label_a, input$risk1)
-    p2 <- make_icon_plot(input$total_n3, cnt2, input$label_b, input$risk2)
+    cnt1 <- (d_risk1() / 100) * d_total_n3()
+    cnt2 <- (d_risk2() / 100) * d_total_n3()
+    p1 <- make_icon_plot(d_total_n3(), cnt1, input$label_a, d_risk1())
+    p2 <- make_icon_plot(d_total_n3(), cnt2, input$label_b, d_risk2())
     p1 + p2
   })
   
-  # Downloads
+  # --- DOWNLOAD HANDLERS ---
   output$downloadAbs <- downloadHandler(
     filename = function() { "absolute_risk.pdf" },
     content = function(file) {
-      # This adds the progress notification at the top of the screen
-      withProgress(message = 'Generating PDF', detail = 'This may take a moment...', value = 0, {
-        
-        incProgress(0.3, detail = "Calculating plot...") # Move bar to 30%
-        cnt <- (input$direct_abs / 100) * input$total_n1
-        p <- make_icon_plot(input$total_n1, cnt, "Absolute Risk", input$direct_abs)
-        p <- p + labs(title = input$user_title1) + 
-          theme(plot.title = element_text(hjust=0.5, size=20))
-        
-        incProgress(0.6, detail = "Rendering icons...") # Move bar to 90%
-        ggsave(file, plot = p, width = 8, height = 7, bg = "white")
-        
-        incProgress(0.1, detail = "Finished!") # Finish
-      })
+      cnt <- (input$direct_abs / 100) * input$total_n1
+      p <- make_icon_plot(input$total_n1, cnt, "Absolute Risk", input$direct_abs)
+      p <- p + labs(title = input$user_title1) + theme(plot.title = element_text(hjust=0.5, size=20))
+      ggsave(file, plot = p, width = 8, height = 7, bg = "white")
     }
   )
   
-  # Download for Tab 3: Single Relative Risk
   output$downloadRel <- downloadHandler(
     filename = function() { "relative_risk.pdf" },
     content = function(file) {
-      withProgress(message = 'Preparing Comparison PDF', detail = 'Rendering arrays...', value = 0, {
-        
-        incProgress(0.2)
-        mult <- if(input$rel_direction == "inc") 1 + (input$pct_change / 100) else 1 - (input$pct_change / 100)
-        b_cnt <- (input$baseline / 100) * input$total_n2
-        n_risk <- max(0, input$baseline * mult)
-        n_cnt <- (n_risk / 100) * input$total_n2
-        
-        incProgress(0.4, detail = "Creating visualizations...")
-        p1 <- make_icon_plot(input$total_n2, b_cnt, "Baseline", input$baseline)
-        p2 <- make_icon_plot(input$total_n2, n_cnt, "New Risk", round(n_risk, 2))
-        
-        combined <- p1 + p2 + 
-          plot_annotation(title = input$user_title2, 
-                          theme = theme(plot.title = element_text(hjust=0.5, size=20)))
-        
-        incProgress(0.3, detail = "Saving file...")
-        ggsave(file, plot = combined, width = 14, height = 7, bg = "white")
-      })
+      mult <- if(input$rel_direction == "inc") 1 + (input$pct_change / 100) else 1 - (input$pct_change / 100)
+      b_cnt <- (input$baseline / 100) * input$total_n2
+      n_risk <- max(0, input$baseline * mult)
+      n_cnt <- (n_risk / 100) * input$total_n2
+      p1 <- make_icon_plot(input$total_n2, b_cnt, "Baseline", input$baseline)
+      p2 <- make_icon_plot(input$total_n2, n_cnt, "New Risk", round(n_risk, 2))
+      combined <- p1 + p2 + plot_annotation(title = input$user_title2, theme = theme(plot.title = element_text(hjust=0.5, size=20)))
+      ggsave(file, plot = combined, width = 14, height = 7, bg = "white")
     }
   )
   
-  # Download for Tab 4: Compare Two Absolute Risks
   output$downloadDual <- downloadHandler(
     filename = function() { "dual_comparison.pdf" },
     content = function(file) {
-      withProgress(message = 'Preparing Comparison PDF', detail = 'Rendering arrays...', value = 0, {
-        
-        incProgress(0.3)
-        cnt1 <- (input$risk1 / 100) * input$total_n3
-        cnt2 <- (input$risk2 / 100) * input$total_n3
-        
-        incProgress(0.3, detail = "Building side-by-side plot...")
-        p1 <- make_icon_plot(input$total_n3, cnt1, input$label_a, input$risk1)
-        p2 <- make_icon_plot(input$total_n3, cnt2, input$label_b, input$risk2)
-        
-        combined <- p1 + p2 + 
-          plot_annotation(title = input$user_title3, 
-                          theme = theme(plot.title = element_text(hjust=0.5, size=20)))
-        
-        incProgress(0.3, detail = "Saving file...")
-        ggsave(file, plot = combined, width = 14, height = 7, bg = "white")
-      })
+      cnt1 <- (input$risk1 / 100) * input$total_n3
+      cnt2 <- (input$risk2 / 100) * input$total_n3
+      p1 <- make_icon_plot(input$total_n3, cnt1, input$label_a, input$risk1)
+      p2 <- make_icon_plot(input$total_n3, cnt2, input$label_b, input$risk2)
+      combined <- p1 + p2 + plot_annotation(title = input$user_title3, theme = theme(plot.title = element_text(hjust=0.5, size=20)))
+      ggsave(file, plot = combined, width = 14, height = 7, bg = "white")
     }
   )
-
 }
 shinyApp(ui, server)
